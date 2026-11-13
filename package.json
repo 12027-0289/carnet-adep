@@ -7,11 +7,13 @@
   "scripts": {
     "dev": "node scripts/servidor.mjs",
     "db:ejemplo": "node scripts/ejemplo.mjs",
+    "reporte": "node scripts/reporte.mjs",
     "importar": "node scripts/importar.mjs datos/afiliados.csv datos/filiales.txt",
     "db:subir-prueba": "node scripts/importar.mjs datos/afiliados.csv datos/filiales.txt --subir",
     "db:subir": "node scripts/importar.mjs datos/afiliados.csv datos/filiales.txt --subir --produccion",
     "borrar-foto": "node scripts/borrar-foto.mjs --produccion",
     "respaldo": "node scripts/respaldo.mjs --produccion",
-    "restaurar": "node scripts/restaurar.mjs --produccion"
+    "restaurar": "node scripts/restaurar.mjs --produccion",
+    "limpiar": "node scripts/limpiar.mjs --produccion"
   }
 }

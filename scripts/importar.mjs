@@ -86,7 +86,7 @@ filas.forEach((f, i) => {
   const cedula = original.replace(/\D/g, "");
   const activo = colActivo === -1 ? 1 : normalizarActivo(f[colActivo]);
 
-  if (cedula.length !== 9) return errores.push(`afiliados, línea ${linea}: cédula inválida "${original}"`);
+  if (!/^\d{9,12}$/.test(cedula)) return errores.push(`afiliados, línea ${linea}: cédula inválida "${original}" (debe tener de 9 a 12 dígitos)`);
   if (activo === null) return errores.push(`afiliados, línea ${linea}: valor de "activo" no reconocido "${f[colActivo]}"`);
   if (afiliados.has(cedula)) return errores.push(`afiliados, línea ${linea}: cédula repetida ${original}`);
   afiliados.set(cedula, activo);

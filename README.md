@@ -2,6 +2,8 @@
 
 Página web donde los afiliados de ADEP crean y ven su carnet digital.
 
+**Página:** https://carnet-adep.vercel.app
+
 - **Crear mi carnet (primera vez):** el afiliado escribe su cédula, su nombre, elige su filial y su
   fecha de nacimiento (día, mes y año en tres listas), y **se toma una foto del rostro** con la cámara
   del celular (o la elige de sus fotos). Debe marcar la casilla de autorización para guardar su foto
@@ -11,6 +13,8 @@ Página web donde los afiliados de ADEP crean y ven su carnet digital.
 - **Carnets sin foto** (creados antes, o si ADEP borró la foto): la foto es **obligatoria**. Al entrar
   se le pide tomarse una, y el carnet no se muestra hasta que la suba (también lo valida el servidor).
 - **Ver mi carnet:** cédula + fecha de nacimiento.
+- **Cédula o DIMEX:** se acepta la cédula nacional (9 dígitos) y la identificación de personas extranjeras
+  residentes: número de residencia antiguo (10 dígitos) o DIMEX (11 o 12). Cualquier otro largo se rechaza.
 - **Recordar en este celular:** después de entrar una vez, el carnet aparece directo al abrir la página.
 - **Código QR de verificación:** el botón **"Mostrar código QR"** abre el código en grande (no va impreso
   en el carnet). Quien lo escanee (un comercio, ADEP) ve en ese momento si el carnet está **vigente**, con la foto y el nombre para compararlos con la persona. La cédula
@@ -38,6 +42,10 @@ guardada en Vercel (no en el código ni en GitHub).
 
 - **Supabase pausa el proyecto si pasa 7 días sin uso.** Para que eso no pase, Vercel hace sola una
   consulta pequeña a Supabase **una vez al día** (`api/despertar.js`, programada en `vercel.json`).
+- **Borrado automático (política de privacidad, punto 7):** esa misma consulta diaria anota la fecha en que
+  un carnet deja de tener afiliado activo, la quita si la persona vuelve a la lista, y **a los 3 meses borra
+  el carnet y la foto**. Si de una vez desaparecen muchos afiliados (lista incompleta), no borra nada y deja
+  un aviso en Vercel → **Logs**. Detalle en `lib/limpieza.js`.
 - **Espacio:** 1 GB para fotos (unas **30 000 fotos** de ~30 KB) y 500 MB de base de datos, **compartidos
   con lo que ADEP ya tenga** en ese proyecto. Revíselo en Supabase → *Project Settings → Usage*.
 - **No hay respaldos automáticos** en el plan gratis de Supabase: haga `npm run respaldo` **una vez al mes**.
@@ -64,15 +72,18 @@ api/                      → lo que corre en el servidor (funciones de Vercel)
   carnet.js               → "recordar en este celular"
   filiales.js             → lista de filiales
   verificar.js            → página que se abre al escanear el QR (/v/<código>)
-  despertar.js            → consulta diaria para que Supabase no se pause
+  despertar.js            → consulta diaria: evita la pausa de Supabase y borra carnets sin afiliación (3 meses)
 lib/comun.js              → funciones compartidas
 lib/supabase.js           → conexión a Supabase (base de datos y fotos)
+lib/limpieza.js           → borrado de carnets de quienes llevan 3 meses sin ser afiliados
 basedatos/supabase.sql    → crea las tablas, la seguridad y el bucket de fotos en Supabase
 scripts/servidor.mjs      → servidor para probar en su computadora (npm run dev)
 scripts/importar.mjs      → revisa la lista de cédulas y filiales y la sube a Supabase
 scripts/borrar-foto.mjs   → borra la foto de un afiliado (fotos inadecuadas)
 scripts/respaldo.mjs      → descarga una copia de los datos y las fotos (npm run respaldo)
 scripts/restaurar.mjs     → vuelve a cargar un respaldo (npm run restaurar)
+scripts/limpiar.mjs       → muestra o fuerza la limpieza que la consulta diaria hace sola (npm run limpiar)
+scripts/reporte.mjs       → saca cédulas y filiales del reporte PDF de ADEP (npm run reporte)
 scripts/ejemplo.mjs       → llena la base de PRUEBA con datos de ejemplo
 datos/                    → ejemplos de cómo deben venir las listas
 .env.local.ejemplo        → modelo de la conexión a la base de PRUEBA
@@ -139,6 +150,8 @@ Datos de prueba:
 | 1-0234-0567 | 14 marzo 1958       | Ya tiene carnet, sin foto: debe agregarla para verlo |
 | 2-0456-0789 | (la que usted elija) | Afiliado sin carnet: puede crearlo             |
 | 4-0111-0222 | (la que usted elija) | Afiliado sin carnet: puede crearlo             |
+| 155800000012 | (la que usted elija) | DIMEX (persona extranjera) sin carnet: puede crearlo |
+| 9000000001 | (la que usted elija) | Residencia antigua (10 dígitos) sin carnet: puede crearlo |
 | 3-0321-0654 | —                   | Inactiva: "No encontramos su afiliación"        |
 | Cualquier otra | —                | "No encontramos su afiliación"                  |
 
@@ -166,15 +179,28 @@ Para comprobar que la consulta diaria quedó programada: Vercel → el proyecto 
 
 ## 4. Cargar o actualizar la lista de afiliados y filiales
 
+> **Hay que hacerlo una vez al mes**: el sistema solo sabe quién es afiliado activo por la última lista
+> subida. Los pasos completos, con el respaldo, están en `GUIA-TI.md` → *Rutina mensual*.
+
 1. Copie `.env.produccion.ejemplo` como **`.env.produccion`** y ponga la URL y la clave del proyecto **real**.
    Guárdelo solo en la computadora de quien administra.
-2. **Afiliados:** del Excel de ADEP solo se necesita la columna **cedula** (con o sin guiones).
+2. **Afiliados y filiales desde el PDF "Reporte de Asociados Activos por Filial":**
+   1. Abra el PDF en Edge o Chrome, haga clic dentro del documento y toque **Ctrl+A** y **Ctrl+C**.
+   2. `notepad datos\reporte.txt`, pegue con **Ctrl+V** y guarde.
+   3. `npm run reporte`: crea `datos/afiliados.csv` (solo las cédulas) y `datos/filiales.txt`
+      (de los encabezados `101 - SAN JOSE`), y muestra cuántas cédulas hay por filial para compararlas
+      con el PDF. No copia nombres, teléfonos, direcciones ni fechas.
+   4. Revise `datos/filiales.txt` (puede corregir tildes) y siga con el paso 5. Al terminar, borre
+      `datos/reporte.txt`: tiene datos personales (Git ya lo ignora).
+
+   Si en vez del PDF tiene un Excel, siga los puntos de abajo.
+3. **Afiliados:** del Excel de ADEP solo se necesita la columna **cedula** (con o sin guiones).
    Si tiene una columna **activo** (`1`/`sí` = activo, `0`/`no` = inactivo), también se usa.
    Las demás columnas se ignoran. Guárdelo como **CSV** en `datos/afiliados.csv`.
    Vea el ejemplo en `datos/ejemplo-afiliados.csv`.
-3. **Filiales:** cree `datos/filiales.txt` con una filial por línea.
+4. **Filiales:** cree `datos/filiales.txt` con una filial por línea.
    Vea el ejemplo en `datos/ejemplo-filiales.txt` (son de ejemplo: use las reales de ADEP).
-4. Ejecute:
+5. Ejecute:
    ```
    npm run importar     # revisa los archivos y avisa si hay errores (no sube nada)
    npm run db:subir     # los sube a la base REAL (pide escribir SUBIR para confirmar)
@@ -216,6 +242,10 @@ El plan gratis de Supabase no guarda copias automáticas: **hágalo una vez al m
 npm run respaldo
 ```
 Para volver a cargar un respaldo: `npm run restaurar -- respaldos/<fecha>`.
+
+**Limpieza de carnets de exafiliados:** la hace sola la consulta diaria. Para ver cómo va o forzarla
+después de subir una lista: `npm run limpiar` (muestra los números y pide escribir SI antes de cambiar algo).
+Lo que hizo cada día aparece en Vercel → **Logs** buscando `despertar`.
 
 **Espacio usado:** Supabase → **Project Settings → Usage** (Storage: máximo 1 GB; base de datos: 500 MB).
 
